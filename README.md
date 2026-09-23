@@ -8,8 +8,8 @@
 - `GET /health` —— 健康检查
 - `POST /scan` —— 根据商品条码查找商品
 
-内置 `tracing` 结构化日志、`tower-http` CORS 支持、统一的 JSON 错误响应格式，
-以及 Docker 镜像、GitHub Actions CI 与 HTTP 集成测试。
+内置 `tracing` 结构化日志、`tower-http` CORS 支持、统一的 JSON 错误响应格式、
+OpenAPI 文档（Swagger UI），以及 Docker 镜像、GitHub Actions CI 与 HTTP 集成测试。
 
 ## 项目结构
 
@@ -129,6 +129,15 @@ curl -X POST http://127.0.0.1:3000/scan \
 - 业务错误（条码找不到）返回 `404`，错误信息来自 `ApiError::not_found`。
 - 请求体解析失败由自定义提取器 `ValidJson<T>` 捕获 axum 默认的 `JsonRejection`，统一转换为 `400` + 友好提示，避免向客户端暴露 serde 的内部实现细节；详细原因仅写入服务端日志（`WARN` 级别）。
 
+## OpenAPI 文档（Swagger UI）
+
+服务启动后，可通过以下地址访问接口文档：
+
+- **交互式 Swagger UI**：<http://127.0.0.1:3000/swagger-ui>
+- **OpenAPI JSON**：<http://127.0.0.1:3000/api-docs/openapi.json>
+
+Swagger UI 页面可在线浏览所有接口、填写参数并直接发起调试请求。
+
 ## tracing 日志
 
 服务启动时初始化 `tracing-subscriber`，默认以 `INFO` 级别输出到控制台。每个 HTTP 请求由日志中间件记录：请求方法、路径、状态码、处理耗时。
@@ -162,7 +171,7 @@ cargo fmt --check
 
 ## CI
 
-GitHub Actions（`.github/workflows/ci.yml`）在每次 push / PR 到 `master` 分支时执行：
+GitHub Actions（`.github/workflows/ci.yml`）在每次 push / PR 到 `main` 分支时执行：
 
 - `cargo fmt --check`
 - `cargo clippy --all-targets -- -D warnings`

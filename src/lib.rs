@@ -13,16 +13,18 @@ use std::sync::LazyLock;
 use std::time::Instant;
 use tower_http::cors::CorsLayer;
 use tracing::{info, warn};
+use utoipa::{OpenApi, ToSchema};
+use utoipa_swagger_ui::SwaggerUi;
 
 /// `GET /health` 的响应体。
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 struct HealthResponse {
     /// 服务状态
     status: String,
 }
 
 /// 商品信息。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 struct Product {
     /// 商品名称
     name: String,
@@ -31,19 +33,20 @@ struct Product {
 }
 
 /// POST /scan 的请求体。
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 struct ScanRequest {
     /// 商品条码
     barcode: String,
 }
 
 /// 统一错误响应结构：所有错误接口都返回 `{"error": "..."}` 格式。
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 struct ApiError {
     /// 错误描述
     error: String,
-    /// 该错误对应的 HTTP 状态码（不序列化进响应体）
+    /// 该错误对应的 HTTP 状态码（不序列化进响应体，也不进 OpenAPI 文档）
     #[serde(skip)]
+    #[schema(ignore)]
     status: StatusCode,
 }
 
@@ -158,6 +161,13 @@ static CATALOG: LazyLock<HashMap<String, Product>> = LazyLock::new(|| {
 });
 
 /// GET /health —— 健康检查。
+#[utoipa::path(
+    get,
+    path = "/health",
+    responses(
+        (status = 200, description = "服务健康", body = HealthResponse)
+    )
+)]
 async fn health_handler() -> Json<HealthResponse> {
     info!(path = "/health", "健康检查");
     Json(HealthResponse {
@@ -166,6 +176,16 @@ async fn health_handler() -> Json<HealthResponse> {
 }
 
 /// POST /scan —— 根据条码查找商品，找不到返回 404。
+#[utoipa::path(
+    post,
+    path = "/scan",
+    request_body = ScanRequest,
+    responses(
+        (status = 200, description = "成功返回商品信息", body = Product),
+        (status = 400, description = "请求体解析失败", body = ApiError),
+        (status = 404, description = "条码不存在", body = ApiError)
+    )
+)]
 async fn scan_handler(
     ValidJson(payload): ValidJson<ScanRequest>,
 ) -> Result<Json<Product>, ApiError> {
@@ -198,9 +218,23 @@ async fn logging_middleware(req: Request, next: Next) -> Response {
     response
 }
 
-/// 构建应用路由（含 CORS 与日志中间件），供 `main` 复用。
+/// OpenAPI 文档定义，聚合所有带注解的处理器。
+#[derive(OpenApi)]
+#[openapi(
+    paths(health_handler, scan_handler),
+    components(schemas(HealthResponse, Product, ScanRequest, ApiError)),
+    info(
+        title = "self-checkout-service API",
+        version = "0.1.0",
+        description = "自助结账 HTTP 服务"
+    )
+)]
+struct ApiDoc;
+
+/// 构建应用路由（含 Swagger UI、CORS 与日志中间件），供 `main` 复用。
 pub fn app() -> Router {
     Router::new()
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .route("/health", get(health_handler))
         .route("/scan", post(scan_handler))
         // 开发环境允许所有来源的跨域请求
