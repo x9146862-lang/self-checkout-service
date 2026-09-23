@@ -8,16 +8,26 @@
 - `GET /health` —— 健康检查
 - `POST /scan` —— 根据商品条码查找商品
 
-内置 `tracing` 结构化日志、`tower-http` CORS 支持，以及统一的 JSON 错误响应格式。
+内置 `tracing` 结构化日志、`tower-http` CORS 支持、统一的 JSON 错误响应格式，
+以及 Docker 镜像、GitHub Actions CI 与 HTTP 集成测试。
 
 ## 项目结构
 
 ```
 .
-├── Cargo.toml        # 项目配置（axum / tokio / serde / tracing / tower-http）
+├── Cargo.toml                  # 项目配置（axum / tokio / serde / tracing / tower-http）
+├── Cargo.lock                  # 依赖锁定
+├── Dockerfile                  # 多阶段构建：编译阶段（rust:1.97）+ 运行阶段（debian:bookworm-slim）
+├── .dockerignore
+├── LICENSE                     # MIT License
+├── .github/
+│   └── workflows/
+│       └── ci.yml              # GitHub Actions CI（fmt + clippy + test）
 ├── src/
-│   ├── main.rs       # 程序入口：初始化 tracing、绑定端口并启动服务
-│   └── lib.rs        # 库入口：路由、处理器、商品目录、ValidJson 提取器、日志中间件、app() 工厂
+│   ├── main.rs                 # 程序入口：初始化 tracing、绑定端口并启动服务
+│   └── lib.rs                  # 库入口：路由、处理器、商品目录、ValidJson 提取器、日志中间件、app() 工厂
+├── tests/
+│   └── http_test.rs            # HTTP 集成测试（tower::ServiceExt + oneshot）
 └── .gitignore
 ```
 
@@ -35,6 +45,18 @@ cargo run
 监听地址可通过环境变量 `ADDR` 覆盖（例如 `ADDR=0.0.0.0:8080 cargo run`）。
 
 > **CORS 说明**：当前配置允许**所有来源**的跨域请求（`CorsLayer::permissive()`），仅适用于开发环境；生产部署前请收紧为具体来源白名单。
+
+## 使用 Docker 运行
+
+项目提供了多阶段构建的 `Dockerfile`（编译阶段基于 `rust:1.97`，运行阶段基于 `debian:bookworm-slim`），最终镜像内监听 `0.0.0.0:3000`。
+
+```bash
+# 构建镜像
+docker build -t self-checkout-service .
+
+# 运行容器，将宿主机的 3000 端口映射到容器
+docker run -p 3000:3000 self-checkout-service
+```
 
 ## 接口
 
@@ -118,11 +140,11 @@ RUST_LOG=debug cargo run   # 输出 DEBUG 及以上级别
 RUST_LOG=off cargo run     # 关闭日志
 ```
 
-## 质量检查
+## 测试
 
 ```bash
-# 编译
-cargo build
+# 运行单元测试 + 集成测试
+cargo test
 
 # 静态检查（把 warning 视为错误）
 cargo clippy --all-targets -- -D warnings
@@ -131,6 +153,25 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
 
+`tests/http_test.rs`（HTTP 集成测试）使用 `tower::ServiceExt::oneshot` 对 `app()` 发起真实请求，覆盖：
+
+- `GET /health` 返回 `200` 与 `{"status":"ok"}`
+- `POST /scan` 命中商品返回 `200` 与商品信息
+- `POST /scan` 条码不存在返回 `404` 与错误信息
+- `POST /scan` 字段类型错误、非法 JSON、缺少 `Content-Type` 分别返回 `400` 与对应错误信息
+
+## CI
+
+GitHub Actions（`.github/workflows/ci.yml`）在每次 push / PR 到 `master` 分支时执行：
+
+- `cargo fmt --check`
+- `cargo clippy --all-targets -- -D warnings`
+- `cargo test`
+
+## 许可证
+
+MIT License，见 [LICENSE](LICENSE)。
+
 ## AI 辅助生成声明
 
-本项目部分代码与文档由 AI 辅助生成，但均经过人工验证和修改（包括编译、静态检查与接口实测）。
+本项目部分代码与文档由 AI 辅助生成，但均经过人工验证和修改（包括编译、静态检查、集成测试与接口实测）。

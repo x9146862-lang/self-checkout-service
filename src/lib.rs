@@ -166,7 +166,9 @@ async fn health_handler() -> Json<HealthResponse> {
 }
 
 /// POST /scan —— 根据条码查找商品，找不到返回 404。
-async fn scan_handler(ValidJson(payload): ValidJson<ScanRequest>) -> Result<Json<Product>, ApiError> {
+async fn scan_handler(
+    ValidJson(payload): ValidJson<ScanRequest>,
+) -> Result<Json<Product>, ApiError> {
     match CATALOG.get(&payload.barcode) {
         Some(product) => {
             info!(barcode = %payload.barcode, "扫描到商品");
